@@ -2,7 +2,7 @@
 # Python modules are needed to run tests and check results
 #    Also include gfortran and netCDF for development
 #
-name: rte_rrtmgp_dev
+name: heuer1_rte_rrtmgp_dev
 channels:
   - conda-forge
   - nodefaults

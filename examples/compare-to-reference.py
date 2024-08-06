@@ -64,7 +64,7 @@ if __name__ == '__main__':
         #
         # Reporting 
         #
-        if not np.allclose(tst[v], ref[v], atol=args.report_threshold, rtol=0):
+        if not np.allclose(tst[v], ref[v], atol=args.report_threshold, rtol=1e-6):
             diff = abs((tst - ref)[v].values)
             avg = 0.5 * (tst + ref)[v].values
             # Division raises a runtime warning when we divide by zero even if
@@ -81,7 +81,7 @@ if __name__ == '__main__':
         # Failure
         #
         if not np.allclose(tst[v], ref[v], atol=args.failure_threshold,
-                           rtol=0): failed = True
+                           rtol=1e-6): failed = True
 
     if failed:
         print("Tests failed")

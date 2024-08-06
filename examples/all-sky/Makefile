@@ -15,7 +15,7 @@ FCINCLUDE += -I$(RRTMGP_BUILD)
 
 # netcdf C and Fortran libraries have to be in the search path or added via environment variable LDFLAGS e.g. 
 #LDFLAGS   += -L$(NFHOME)/lib -L$(NCHOME)/lib
-LIBS      += -lnetcdff -lnetcdf
+LIBS      += -lnetcdff -lnetcdf -lstdc++
 
 VPATH = ../:$(RRTMGP_ROOT)/rrtmgp-frontend # Needed for cloud_optics and aerosol_optics
 
@@ -31,21 +31,28 @@ VPATH = ../:$(RRTMGP_ROOT)/rrtmgp-frontend # Needed for cloud_optics and aerosol
 ADDITIONS  = mo_load_coefficients.o mo_simple_netcdf.o 
 ADDITIONS += mo_cloud_optics_rrtmgp.o mo_load_cloud_coefficients.o
 ADDITIONS += mo_aerosol_optics_rrtmgp_merra.o mo_load_aerosol_coefficients.o
+ADDITIONS += mo_load_profiles.o
 
 #
 # Targets
 #
-all: rrtmgp_allsky
+all: rrtmgp_allsky my_rrtmgp_allsky
 
 rrtmgp_allsky: $(ADDITIONS) rrtmgp_allsky.o
 
 rrtmgp_allsky.o: $(ADDITIONS) rrtmgp_allsky.F90
+
+my_rrtmgp_allsky: $(ADDITIONS) my_rrtmgp_allsky.o
+
+my_rrtmgp_allsky.o: $(ADDITIONS) my_rrtmgp_allsky.F90
 
 mo_cloud_optics_rrtmgp.o:         mo_cloud_optics_rrtmgp.F90
 mo_aerosol_optics_rrtmgp_merra.o: mo_aerosol_optics_rrtmgp_merra.F90
 mo_load_coefficients.o:         mo_simple_netcdf.o                                  mo_load_coefficients.F90
 mo_load_cloud_coefficients.o:   mo_simple_netcdf.o mo_cloud_optics_rrtmgp.o         mo_load_cloud_coefficients.F90
 mo_load_aerosol_coefficients.o: mo_simple_netcdf.o mo_aerosol_optics_rrtmgp_merra.o mo_load_aerosol_coefficients.F90
+
+mo_load_profiles.o: mo_simple_netcdf.o mo_load_profiles.F90
 
 tests: rrtmgp_allsky
 	$(RUN_CMD) bash all_tests.sh  
