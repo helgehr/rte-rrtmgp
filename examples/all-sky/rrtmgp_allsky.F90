@@ -318,8 +318,8 @@ program rte_rrtmgp_allsky
                                          t_lay, t_sfc, &
                                          gas_concs,    &
                                          atmos,        &
-                                         lw_sources,   &
-                                         tlev = t_lev))
+                                         lw_sources))!,   &
+                                        !  tlev = t_lev))
       if(do_clouds)   call stop_on_err(clouds%increment(atmos))
       if(do_aerosols) call stop_on_err(aerosols%increment(atmos))
       call stop_on_err(rte_lw(atmos, top_at_1, &
@@ -334,6 +334,7 @@ program rte_rrtmgp_allsky
       !$omp target  data map(alloc:toa_flux)
       fluxes%flux_dn_dir => flux_dir(:,:)
 
+      ! print *, k_dist%get_gpoint_bands()
       call stop_on_err(k_dist%gas_optics(p_lay, p_lev, &
                                          t_lay,        &
                                          gas_concs,    &
@@ -733,7 +734,7 @@ contains
   subroutine write_fluxes 
     use netcdf
     use mo_simple_netcdf, only: write_field
-    integer :: ncid, i, col_dim, lay_dim, lev_dim, varid
+    integer :: ncid, i, col_dim, lay_dim, lev_dim, varid, ngpt_dim
     real(wp) :: vmr(ncol, nlay)
     character(len=3) :: flux_prefix
     !
@@ -785,6 +786,9 @@ contains
     if(is_sw) then 
       flux_prefix = "sw_"
       call create_var(flux_prefix // "flux_dir", ncid, [col_dim, lev_dim])
+      if(nf90_def_dim(ncid, "gpt", ngpt, ngpt_dim) /= NF90_NOERR) &
+        call stop_on_err("rrtmgp_allsky: can't define ngpt dimension")
+      call create_var("toa_flux",    ncid, [col_dim, ngpt_dim])
     else
       flux_prefix = "lw_"  
     end if 
@@ -826,6 +830,9 @@ contains
       call stop_on_err(write_field(ncid, "aero_type",  aero_type))
     end if 
 
+    if(is_sw) then
+      call stop_on_err(write_field(ncid, "toa_flux",  toa_flux))
+    end if
     ! Fluxes - writing 
     !$acc        update host(flux_up, flux_dn)
     !$omp target update from(flux_up, flux_dn)

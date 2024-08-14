@@ -31,7 +31,7 @@ VPATH = ../:$(RRTMGP_ROOT)/rrtmgp-frontend # Needed for cloud_optics and aerosol
 ADDITIONS  = mo_load_coefficients.o mo_simple_netcdf.o 
 ADDITIONS += mo_cloud_optics_rrtmgp.o mo_load_cloud_coefficients.o
 ADDITIONS += mo_aerosol_optics_rrtmgp_merra.o mo_load_aerosol_coefficients.o
-ADDITIONS += mo_load_profiles.o
+ADDITIONS += mo_load_profiles.o #mo_gas_optics_util_string.o
 
 #
 # Targets

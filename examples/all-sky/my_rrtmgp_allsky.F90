@@ -18,21 +18,23 @@ program my_rte_rrtmgp_allsky
   use mo_load_aerosol_coefficients, &
                              only: load_aero_lutcoeff
   use mo_rte_config,         only: rte_config_checks
-  use mo_load_profiles,      only: load_profiles, load_vert_grid_info
+  use mo_load_profiles,      only: load_profiles, load_vert_grid_info, load_2d_sw, load_2d_lw
   use mo_gas_optics_constants,   only: grav
+  use mo_gas_optics_util_string, only: string_loc_in_array
   implicit none
   ! ----------------------------------------------------------------------------------
   ! Variables
   ! ----------------------------------------------------------------------------------
   ! Arrays: dimensions (col, lay)
   real(wp), dimension(:,:),   allocatable :: p_lay, t_lay, p_lev, t_lev ! t_lev is only needed for LW
-  real(wp), dimension(:,:),   allocatable :: q, o3, col_dry, qc, qi
+  real(wp), dimension(:,:),   allocatable :: q, o3, col_dry, qc, qi, n2o, ch4
+  real(wp), dimension(:,:),   allocatable :: q_mmr, o3_mmr, qc_mmr, qi_mmr, n2o_mmr, ch4_mmr
   real(wp), dimension(:,:),   allocatable :: temp_array
 
   !
   ! Longwave only
   !
-  real(wp), dimension(:),     allocatable :: t_sfc
+  real(wp), dimension(:),     allocatable :: t_sfc, solin
   real(wp), dimension(:,:),   allocatable :: emis_sfc ! First dimension is band
   !
   ! Shortwave only
@@ -157,12 +159,13 @@ program my_rte_rrtmgp_allsky
   if (nUserArgs >  9) print *, "Ignoring command line arguments beyond the first seven..."
   ! -----------------------------------------------------------------------------------
   allocate(p_lay(ncol, nlay), t_lay(ncol, nlay), p_lev(ncol, nlay+1), t_lev(ncol, nlay+1))
-  allocate(q    (ncol, nlay),    o3(ncol, nlay), qc   (ncol, nlay),   qi   (ncol, nlay))
+  allocate(q    (ncol, nlay),    o3(ncol, nlay), qc   (ncol, nlay),   qi   (ncol, nlay), n2o(ncol, nlay), ch4(ncol, nlay))
+  allocate(q_mmr(ncol, nlay),o3_mmr(ncol, nlay), qc_mmr(ncol, nlay), qi_mmr(ncol, nlay), n2o_mmr(ncol, nlay), ch4_mmr(ncol, nlay))
   !$acc        data create(   p_lay, t_lay, p_lev, t_lev, q, o3)
   !$omp target data map(alloc:p_lay, t_lay, p_lev, t_lev, q, o3)
   ! ------------------- my stuff ------------------
   ! cs_grid_info_file = "/p/scratch/icon-a-ml/heuer1/LEAP/ClimSim_low-res/ClimSim_low-res_grid-info.nc"
-  allocate(hyai(nlay+1), hybi(nlay+1), hyam(nlay), hybm(nlay), p0, lwup(ncol))
+  allocate(hyai(nlay+1), hybi(nlay+1), hyam(nlay), hybm(nlay), p0)
   call load_vert_grid_info(cs_grid_info_file, ncol, nlay, hyai, hybi, hyam, hybm, p0)
   ! print *, p0
   ! print *, hyai
@@ -173,9 +176,37 @@ program my_rte_rrtmgp_allsky
   ! print *, cs_mli_file
 
   ! cs_mli_file = "/p/scratch/icon-a-ml/heuer1/LEAP/ClimSim_low-res/train/0001-02/E3SM-MMF.mli.0001-02-01-00000.nc"
-  call load_profiles(cs_mli_file, ncol, nlay, hyai, hybi, hyam, hybm, p0, p_lay, t_lay, p_lev, t_lev, q, qc, qi, o3, n2o, ch4, lwup)
-  ! todo: compute/get cloud mask
-  ! print *, q(1,:)
+  call load_profiles(cs_mli_file,&
+                     ncol,&
+                     nlay,&
+                     nbnd,&
+                     hyai,&
+                     hybi,&
+                     hyam,&
+                     hybm,&
+                     p0,&
+                     p_lay,&
+                     t_lay,&
+                     p_lev,&
+                     q_mmr,&
+                     qc_mmr,&
+                     qi_mmr,&
+                     o3_mmr,&
+                     n2o_mmr,&
+                     ch4_mmr) 
+  ! print *, p_lay(192,:)
+  ! print *, "------------------"
+  ! print *, p_lev(192,:)
+  ! print *, "------------------"
+  ! print *, t_lay(192,:)
+  ! print *, "------------------"
+  
+  call get_gas_vmr(ncol, nlay, q_mmr, 'H2O', q)
+  call get_gas_vmr(ncol, nlay, qc_mmr, 'H2O', qc)
+  call get_gas_vmr(ncol, nlay, qi_mmr, 'H2O', qi)
+  call get_gas_vmr(ncol, nlay, o3_mmr, 'O3', o3)
+  call get_gas_vmr(ncol, nlay, n2o_mmr, 'N2O', n2o)
+  call get_gas_vmr(ncol, nlay, ch4_mmr, 'CH4', ch4)
   ! ------------------- my stuff ------------------
   ! call compute_profiles(300._wp, ncol, nlay, p_lay, t_lay, p_lev, t_lev, q, o3)
   ! print *, p_lev(1,:)
@@ -224,6 +255,7 @@ program my_rte_rrtmgp_allsky
   ! Problem sizes
   !
   nbnd = k_dist%get_nband()
+  ! print *,nbnd
   ngpt = k_dist%get_ngpt()
   top_at_1 = p_lay(1, 1) < p_lay(1, nlay)
 
@@ -260,17 +292,35 @@ program my_rte_rrtmgp_allsky
     ! toa_flux is threadprivate
     !!$omp parallel
     allocate(toa_flux(ncol, ngpt))
+    ! todo: interpolate albedo like in icon
+    allocate(sfc_alb_dir(nbnd, ncol), sfc_alb_dif(nbnd, ncol), mu0(ncol), solin(ncol))
+    call load_2d_sw(cs_mli_file,&
+                      ncol,&
+                      nlay,&
+                      nbnd,&
+                      solin,&
+                      mu0,&
+                      sfc_alb_dir,&
+                      sfc_alb_dif)
+    ! print *, solin(192)
+    ! print *, "------------------"
+    ! print *, mu0(192)
+    ! print *, "------------------"
+    ! print *, sfc_alb_dir(:,192)
+    ! print *, "------------------"
+    ! print *, sfc_alb_dif(:,192)
+    ! print *, "------------------"
+
     !!$omp end parallel
     !
-    allocate(sfc_alb_dir(nbnd, ncol), sfc_alb_dif(nbnd, ncol), mu0(ncol))
     !$acc         enter data create(   sfc_alb_dir, sfc_alb_dif, mu0)
     !$omp target  enter data map(alloc:sfc_alb_dir, sfc_alb_dif, mu0)
     ! Ocean-ish values for no particular reason
     !$acc kernels
     !$omp target
-    sfc_alb_dir = 0.06_wp
-    sfc_alb_dif = 0.06_wp
-    mu0 = .86_wp
+    ! sfc_alb_dir = 0.06_wp
+    ! sfc_alb_dif = 0.06_wp
+    ! mu0 = .86_wp
     !$acc end kernels
     !$omp end target
   else
@@ -279,7 +329,16 @@ program my_rte_rrtmgp_allsky
     call stop_on_err(lw_sources%alloc(ncol, nlay, k_dist))
     !!$omp end parallel
 
-    allocate(t_sfc(ncol), emis_sfc(nbnd, ncol))
+    allocate(t_sfc(ncol), emis_sfc(nbnd, ncol), lwup(ncol))
+    call load_2d_lw(cs_mli_file,&
+                      ncol,&
+                      nlay,&
+                      nbnd,&
+                      lwup)
+                    
+    ! print *, lwup(192)
+    ! print *, "------------------"
+
     !$acc         enter data create   (t_sfc, emis_sfc)
     !$omp target  enter data map(alloc:t_sfc, emis_sfc)
     ! Surface temperature
@@ -291,7 +350,7 @@ program my_rte_rrtmgp_allsky
 
     ! t_sfc = t_lev(1, merge(nlay+1, 1, top_at_1))
     t_sfc = (lwup/(emis_sfc(1,:)*sigma))**(1.0/4.0)
-    print *, sum(t_sfc)/size(t_sfc)
+    ! print *, sum(t_sfc)/size(t_sfc)
 
     !$acc end kernels
     !$omp end target
@@ -379,6 +438,12 @@ program my_rte_rrtmgp_allsky
                                          gas_concs,    &
                                          atmos,        &
                                          toa_flux))
+      ! rescale toa_flux
+      do icol = 1, ncol 
+        ! print *, solin(icol) / SUM(toa_flux(icol,:))
+        toa_flux(icol,:) = toa_flux(icol,:) * solin(icol) / SUM(toa_flux(icol,:))
+      end do
+      ! end rescale toa_flux
       if(do_clouds) then 
         call stop_on_err(clouds%delta_scale())
         call stop_on_err(clouds%increment(atmos))
@@ -391,6 +456,10 @@ program my_rte_rrtmgp_allsky
                               mu0,   toa_flux, &
                               sfc_alb_dir, sfc_alb_dif, &
                               fluxes))
+      ! print *, maxval(fluxes%flux_up(:,:), 1)
+      ! print *, "------------------"
+      ! print *, maxval(fluxes%flux_dn(:,:), 1)
+
       !$acc        end data   
       !$omp end target data
     end if
@@ -640,11 +709,12 @@ contains
         ! lwp(icol,ilay) = merge(10._wp,  0._wp, cloud_mask(icol,ilay) .and. t_lay(icol,ilay) > 263._wp)
         ! iwp(icol,ilay) = merge(10._wp,  0._wp, cloud_mask(icol,ilay) .and. t_lay(icol,ilay) < 273._wp)
 
-        lwp(icol,ilay) = p_lev(icol,ilay+1) - p_lev(icol,ilay) * qc(icol,ilay) / grav * 1e3_wp
-        iwp(icol,ilay) = p_lev(icol,ilay+1) - p_lev(icol,ilay) * qi(icol,ilay) / grav * 1e3_wp
+        lwp(icol,ilay) = (p_lev(icol,ilay+1) - p_lev(icol,ilay)) * qc(icol,ilay) / grav * 1e3_wp
+        iwp(icol,ilay) = (p_lev(icol,ilay+1) - p_lev(icol,ilay)) * qi(icol,ilay) / grav * 1e3_wp
 
         rel(icol,ilay) = merge(rel_val, 0._wp, lwp(icol,ilay) > 0._wp)
         rei(icol,ilay) = merge(rei_val, 0._wp, iwp(icol,ilay) > 0._wp)
+
       end do
     end do
     !$acc exit data delete(cloud_mask)
@@ -777,7 +847,7 @@ contains
   subroutine write_fluxes 
     use netcdf
     use mo_simple_netcdf, only: write_field
-    integer :: ncid, i, col_dim, lay_dim, lev_dim, varid
+    integer :: ncid, i, col_dim, lay_dim, lev_dim, varid, ngpt_dim
     real(wp) :: vmr(ncol, nlay)
     character(len=3) :: flux_prefix
     !
@@ -829,6 +899,10 @@ contains
     if(is_sw) then 
       flux_prefix = "sw_"
       call create_var(flux_prefix // "flux_dir", ncid, [col_dim, lev_dim])
+      ! print *, ngpt
+      ! if(nf90_def_dim(ncid, "gpt", ngpt, ngpt_dim) /= NF90_NOERR) &
+      !   call stop_on_err("rrtmgp_allsky: can't define ngpt dimension")
+      ! call create_var("toa_flux",    ncid, [col_dim, ngpt_dim])
     else
       flux_prefix = "lw_"  
     end if 
@@ -870,6 +944,9 @@ contains
       call stop_on_err(write_field(ncid, "aero_type",  aero_type))
     end if 
 
+    ! if(is_sw) then
+    !   call stop_on_err(write_field(ncid, "toa_flux",  toa_flux))
+    ! end if
     ! Fluxes - writing 
     !$acc        update host(flux_up, flux_dn)
     !$omp target update from(flux_up, flux_dn)
@@ -896,5 +973,121 @@ contains
     if(nf90_def_var(ncid, trim(name), NF90_DOUBLE, dim_ids, varid) /= NF90_NOERR) &
       call stop_on_err("create_var: can't define " // trim(name) // " variable")
   end subroutine create_var
+  ! ---------------------------------------------------------
+  subroutine get_gas_vmr(ncol, nlay, mmr, gas_name, vmr)
+  !from mmr to vmr (see https://github.com/E3SM-Project/ACME-ECP/blob/master/components/cam/src/physics/rrtmgp/radiation.F90)
+
+      integer, intent(in ) :: ncol, nlay
+      character(len=*), intent(in) :: gas_name
+      real(wp), intent(in) :: mmr(ncol,nlay)
+      real(wp), intent(out) :: vmr(ncol,nlay)
+
+      ! vmr = 1.0_wp
+
+      ! Gases and molecular weights. Note that we do NOT have CFCs yet (I think
+      ! this is coming soon in RRTMGP). RRTMGP also allows for absorption due to
+      ! CO and N2, which RRTMG did not have.
+      character(len=3), dimension(8) :: gas_species = (/ &
+        'H2O', 'CO2', 'O3 ', 'N2O', &
+        'CO ', 'CH4', 'O2 ', 'N2 ' &
+      /)
+      real(wp), dimension(8) :: mol_weight_gas = (/ &
+        18.01528, 44.0095, 47.9982, 44.0128, &
+        28.0101, 16.04246, 31.998, 28.0134 &
+      /)  ! g/mol
+
+      ! Molar weight of air
+      real(wp), parameter :: mol_weight_air = 28.97  ! g/mol
+                                      
+      ! Defaults for gases that are not available (TODO: is this still accurate?)
+      real(wp), parameter :: co_vmr = 1.0e-7_wp
+      real(wp), parameter :: n2_vmr = 0.7906_wp
+
+      ! Loop indices
+      integer :: igas
+
+      ! Name of routine
+      character(len=32) :: subname = 'get_gas_vmr'
+
+      ! Get index into gas names we define above that we know the molecular 
+      ! weights for; if this gas is not in list of gases we know about, skip
+      igas = string_loc_in_array(gas_name, gas_species)
+      !igas = 1
+      if (igas <= 0) then
+        !call endrun('Gas name ' // trim(gas_name) // ' not recognized.')
+        call stop_on_err('Gas name ' // trim(gas_name) // ' not recognized.')
+      end if
+        
+      ! initialize
+      vmr(:,:) = 0._wp
+
+      select case(trim(gas_species(igas)))
+
+        case('CO')
+
+           ! CO not available, use default
+           vmr(1:ncol,1:nlay) = co_vmr
+
+        case('N2')
+
+           ! N2 not available, use default
+           vmr(1:ncol,1:nlay) = n2_vmr
+
+        case('H2O')
+           ! Convert to volume mixing ratio by multiplying by the ratio of
+           ! molecular weight of dry air to molecular weight of gas. Note that
+           ! first specific humidity (held in the mass_mix_ratio array read
+           ! from rad_constituents) is converted to an actual mass mixing
+           ! ratio.
+           vmr(1:ncol,1:nlay) = mmr(1:ncol,1:nlay) / ( &
+              1._wp - mmr(1:ncol,1:nlay) &
+           )  * mol_weight_air / mol_weight_gas(igas)
+
+        case DEFAULT
+
+           ! Convert to volume mixing ratio by multiplying by the ratio of
+           ! molecular weight of dry air to molecular weight of gas
+           vmr(1:ncol,1:nlay) = mmr(1:ncol,1:nlay) &
+                              * mol_weight_air / mol_weight_gas(igas)
+
+      end select
+
+   end subroutine get_gas_vmr
+  ! ---------------------------------------------------------
+  !
+  ! Is string somewhere in array?
+  !
+  !pure function string_loc_in_array(string, array)
+    !character(len=*),               intent(in) :: string
+    !character(len=*), dimension(:), intent(in) :: array
+    !integer                                    :: string_loc_in_array
+
+    !integer :: i
+    !character(len=len_trim(string)) :: lc_string
+
+    !string_loc_in_array = -1
+    !lc_string = lower_case(trim(string))
+    !do i = 1, size(array)
+      !if(lc_string == lower_case(trim(array(i)))) then
+        !string_loc_in_array = i
+        !exit
+      !end if
+    !end do
+  !end function string_loc_in_array
+  !! ---------------------------------------------------------
+  !pure function lower_case( input_string ) result( output_string )
+    !character(len=*), intent(in) :: input_string
+    !character(len=len(input_string)) :: output_string
+    !integer :: i, n
+
+    !! Copy input string
+    !output_string = input_string
+
+    !! Convert case character by character
+    !do i = 1, len(output_string)
+      !n = index(UPPER_CASE_CHARS, output_string(i:i))
+      !if ( n /= 0 ) output_string(i:i) = LOWER_CASE_CHARS(n:n)
+    !end do
+  !end function
   ! ---------------------------------------------------------
 end program my_rte_rrtmgp_allsky
