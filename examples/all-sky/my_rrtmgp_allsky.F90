@@ -292,16 +292,17 @@ program my_rte_rrtmgp_allsky
     ! toa_flux is threadprivate
     !!$omp parallel
     allocate(toa_flux(ncol, ngpt))
-    ! todo: interpolate albedo like in icon
     allocate(sfc_alb_dir(nbnd, ncol), sfc_alb_dif(nbnd, ncol), mu0(ncol), solin(ncol))
     call load_2d_sw(cs_mli_file,&
                       ncol,&
                       nlay,&
                       nbnd,&
+                      k_dist%get_band_lims_wavenumber(),&
                       solin,&
                       mu0,&
                       sfc_alb_dir,&
                       sfc_alb_dif)
+
     ! print *, solin(192)
     ! print *, "------------------"
     ! print *, mu0(192)

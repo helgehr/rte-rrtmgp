@@ -25,6 +25,7 @@ contains
                            ncol,&
                            nlay,&
                            nbnd,&
+                           band_lims,&
                            solin,&
                            mu0,&
                            sfc_alb_dir,&
@@ -32,12 +33,15 @@ contains
     ! -----------------
     character(len=256),                intent(in)  :: cs_mli_file
     integer,                           intent(in)  :: ncol, nlay, nbnd
+    real(wp), dimension(2,nbnd),       intent(in) :: band_lims
     real(wp), dimension(ncol),         intent(out) :: mu0, solin
     real(wp), dimension(nbnd,ncol),    intent(out) :: sfc_alb_dir, sfc_alb_dif
 
     ! Local variables
-    integer :: ncid, i
-    real(wp), dimension(ncol) :: alb_dir, alb_dif
+    integer :: ncid, i, bnd
+    real(wp), dimension(ncol) :: alb_dir_sw, alb_dif_sw, alb_dir_lw, alb_dif_lw
+    real(wp), PARAMETER :: nir_vis_boundary   = 14500._wp
+    real(wp) :: frc_vis, delwave
 
     ! Open cloud optical property coefficient file
     if(nf90_open(trim(cs_mli_file), NF90_NOWRITE, ncid) /= NF90_NOERR) &
@@ -46,13 +50,30 @@ contains
     ! lwup = read_field(ncid, 'cam_in_LWUP', ncol)
     solin = read_field(ncid, 'pbuf_SOLIN', ncol)
     mu0 = read_field(ncid, 'pbuf_COSZRS', ncol)
-    alb_dir = read_field(ncid, 'cam_in_ASDIR', ncol)
-    alb_dif = read_field(ncid, 'cam_in_ASDIF', ncol)
+    alb_dir_sw = read_field(ncid, 'cam_in_ASDIR', ncol)
+    alb_dif_sw = read_field(ncid, 'cam_in_ASDIF', ncol)
+    alb_dir_lw = read_field(ncid, 'cam_in_ALDIR', ncol)
+    alb_dif_lw = read_field(ncid, 'cam_in_ALDIF', ncol)
 
-    do i=1, nbnd
-      sfc_alb_dir(i,:) = alb_dir
-      sfc_alb_dif(i,:) = alb_dif
-    end do
+    ! do i=1, nbnd
+    !   sfc_alb_dir(i,:) = alb_dir_sw
+    !   sfc_alb_dif(i,:) = alb_dif_sw
+    ! end do
+
+    ! interpolate albedo like in icon 2.6.4 (src\atm_phy_rte_rrtmgp\mo_rte_rrtmgp_interface.f90)
+    DO i=1,ncol
+      DO bnd=1,nbnd
+        delwave = band_lims(2,bnd) - band_lims(1,bnd)
+        frc_vis = MAX(0.0_wp, MIN(1.0_wp, &
+          (band_lims(2,bnd) - nir_vis_boundary) / delwave))
+        ! if (i==1) print *, band_lims(1,bnd), band_lims(2,bnd)
+
+        sfc_alb_dif(bnd,i) = alb_dif_sw(i) * frc_vis + &
+                         alb_dif_lw(i) * (1.0_wp - frc_vis)
+        sfc_alb_dir(bnd,i) = alb_dir_sw(i) * frc_vis + &
+                         alb_dir_lw(i) * (1.0_wp - frc_vis)
+      END DO
+    END DO
 
     ncid = nf90_close(ncid)
   end subroutine load_2d_sw
@@ -115,7 +136,7 @@ contains
 
     ! Local variables
     integer :: ncid, i
-    real(wp), dimension(ncol) :: ps, alb_dir, alb_dif
+    real(wp), dimension(ncol) :: ps
 
     ! real(wp), dimension(:,:), allocatable                :: q_lay
     ! -----------------
@@ -145,13 +166,6 @@ contains
     ! lwup = read_field(ncid, 'cam_in_LWUP', ncol)
     ! solin = read_field(ncid, 'pbuf_SOLIN', ncol)
     ! mu0 = read_field(ncid, 'pbuf_COSZRS', ncol)
-    ! alb_dir = read_field(ncid, 'cam_in_ASDIR', ncol)
-    ! alb_dif = read_field(ncid, 'cam_in_ASDIF', ncol)
-
-    ! do i=1, nbnd
-    !   sfc_alb_dir(i,:) = alb_dir
-    !   sfc_alb_dif(i,:) = alb_dif
-    ! end do
 
     ncid = nf90_close(ncid)
   end subroutine load_profiles
