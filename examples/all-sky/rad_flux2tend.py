@@ -13,13 +13,20 @@ out_ds = xr.Dataset()
 
 net_rad_sw = ds_sw.sw_flux_up - ds_sw.sw_flux_dn
 net_rad_lw = ds_lw.lw_flux_up - ds_lw.lw_flux_dn
-net_rad = net_rad_sw + net_rad_lw
-heating_rate = net_rad.diff(dim='lev') / ds_sw.p_lev.diff(dim='lev') * g / cpd
+# net_rad = net_rad_sw + net_rad_lw
+# heating_rate = net_rad.diff(dim='lev') / ds_sw.p_lev.diff(dim='lev') * g / cpd
+heating_rate_sw = net_rad_sw.diff(dim='lev') / ds_sw.p_lev.diff(dim='lev') * g / cpd
+heating_rate_lw = net_rad_lw.diff(dim='lev') / ds_lw.p_lev.diff(dim='lev') * g / cpd
+heating_rate = heating_rate_sw + heating_rate_lw
 
 heating_rate = heating_rate.rename('ptend_t')
+heating_rate_sw = heating_rate_sw.rename('ptend_t_sw')
+heating_rate_lw = heating_rate_lw.rename('ptend_t_lw')
 
 # climsim out
 out_ds['ptend_t'] = heating_rate
+out_ds['ptend_t_sw'] = heating_rate_sw
+out_ds['ptend_t_lw'] = heating_rate_lw
 out_ds['NETSW'] = -net_rad_sw.isel(lev=-1) # apparently defined as negative netflux (sfc absorption)
 out_ds['FLWDS'] = ds_lw.lw_flux_dn.isel(lev=-1)
 out_ds['SOLS'] = ds_sw.sw_flux_dir.isel(lev=-1)
@@ -32,6 +39,8 @@ out_ds['LWUP'] = ds_lw.lw_flux_up.isel(lev=-1)
 
 # fix_units
 out_ds['ptend_t'].attrs['Units'] = 'K s-1'
+out_ds['ptend_t_sw'].attrs['Units'] = 'K s-1'
+out_ds['ptend_t_lw'].attrs['Units'] = 'K s-1'
 out_ds['NETSW'].attrs['Units'] = 'W m-2'
 out_ds['FLWDS'].attrs['Units'] = 'W m-2'
 out_ds['SOLS'].attrs['Units'] = 'W m-2'

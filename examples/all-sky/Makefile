@@ -66,4 +66,4 @@ check:
 	       --file rrtmgp-allsky-lw-no-aerosols.nc rrtmgp-allsky-sw-no-aerosols.nc
 
 clean:
-	-rm rrtmgp_allsky *.o *.optrpt ../*.optrpt *.mod *.nc
+	-rm rrtmgp_allsky *.o *.optrpt ../*.optrpt *.mod # *.nc
