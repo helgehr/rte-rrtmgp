@@ -26,7 +26,7 @@ program my_rte_rrtmgp_allsky
   ! Variables
   ! ----------------------------------------------------------------------------------
   ! Arrays: dimensions (col, lay)
-  real(wp), dimension(:,:),   allocatable :: p_lay, t_lay, p_lev, t_lev ! t_lev is only needed for LW
+  real(wp), dimension(:,:),   allocatable :: p_lay, t_lay, p_lev, t_lev, h_lev, dh_lev ! t_lev is only needed for LW
   real(wp), dimension(:,:),   allocatable :: q, o3, col_dry, qc, qi, n2o, ch4
   real(wp), dimension(:,:),   allocatable :: q_mmr, o3_mmr, qc_mmr, qi_mmr, n2o_mmr, ch4_mmr
   real(wp), dimension(:,:),   allocatable :: temp_array
@@ -114,7 +114,7 @@ program my_rte_rrtmgp_allsky
   integer(kind=i8), allocatable :: elapsed(:)
   ! my vars
   character(len=256) :: cs_mli_file, cs_grid_info_file
-  real(wp), dimension(:),   allocatable :: hyai, hybi, hyam, hybm, lwup
+  real(wp), dimension(:),   allocatable :: hyai, hybi, hyam, hybm, lwup, ps
   real(wp), allocatable :: p0
   real(wp), parameter :: sigma = 5.670374419e-8_wp ! Stefan-Boltzmann constant 
   !----------
@@ -158,8 +158,8 @@ program my_rte_rrtmgp_allsky
   end if 
   if (nUserArgs >  9) print *, "Ignoring command line arguments beyond the first seven..."
   ! -----------------------------------------------------------------------------------
-  allocate(p_lay(ncol, nlay), t_lay(ncol, nlay), p_lev(ncol, nlay+1), t_lev(ncol, nlay+1))
-  allocate(q    (ncol, nlay),    o3(ncol, nlay), qc   (ncol, nlay),   qi   (ncol, nlay), n2o(ncol, nlay), ch4(ncol, nlay))
+  allocate(p_lay(ncol, nlay), t_lay(ncol, nlay), p_lev(ncol, nlay+1), t_lev(ncol, nlay+1), h_lev(ncol, nlay+1), dh_lev(ncol, nlay))
+  allocate(q    (ncol, nlay),    o3(ncol, nlay), qc   (ncol, nlay),   qi   (ncol, nlay), n2o(ncol, nlay), ch4(ncol, nlay), ps(ncol))
   allocate(q_mmr(ncol, nlay),o3_mmr(ncol, nlay), qc_mmr(ncol, nlay), qi_mmr(ncol, nlay), n2o_mmr(ncol, nlay), ch4_mmr(ncol, nlay))
   !$acc        data create(   p_lay, t_lay, p_lev, t_lev, q, o3)
   !$omp target data map(alloc:p_lay, t_lay, p_lev, t_lev, q, o3)
@@ -185,6 +185,7 @@ program my_rte_rrtmgp_allsky
                      hyam,&
                      hybm,&
                      p0,&
+                     ps,&
                      p_lay,&
                      t_lay,&
                      p_lev,&
@@ -194,6 +195,23 @@ program my_rte_rrtmgp_allsky
                      o3_mmr,&
                      n2o_mmr,&
                      ch4_mmr) 
+        
+  ! from https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
+  do ilay=1,nlay+1
+    do icol=1,ncol
+      h_lev(icol,ilay) = 0.3048_wp*145366.45_wp*(1 - (p_lev(icol,ilay)/ps(icol))**0.190284)
+    end do
+  end do
+  do ilay=1,nlay
+    do icol=1,ncol
+      dh_lev(icol,ilay) = h_lev(icol,ilay) - h_lev(icol,ilay+1)
+    end do
+  end do
+  ! print *, size(h_lev, 1)
+  ! print *, "------------"
+  ! print *, sum(h_lev, 1)/size(h_lev, 1)
+  ! print *, "------------"
+  ! print *, sum(dh_lev, 1)/size(dh_lev, 1)
   ! print *, p_lay(192,:)
   ! print *, "------------------"
   ! print *, p_lev(192,:)
@@ -553,99 +571,6 @@ program my_rte_rrtmgp_allsky
   !$omp end target data
 contains
   ! ----------------------------------------------------------------------------------
-  subroutine compute_profiles(SST, ncol, nlay, p_lay, t_lay, p_lev, t_lev, q_lay, o3)
-    !
-    ! Construct profiles of pressure, temperature, humidity, and ozone 
-    !   more or less following the RCEMIP protocol for a surface temperature of 300K
-    !   more or less follows a Python implementation by Chiel van Heerwardeen
-    ! Extensions for future - variable SST and T profile, variable RH, lapse rate in stratosphere 
-    !   will all access absorption coefficient data more realistically 
-    !
-    real(wp),                          intent(in ) :: SST 
-    integer,                           intent(in ) :: ncol, nlay
-    real(wp), dimension(ncol, nlay  ), intent(out) :: p_lay, t_lay, q_lay, o3
-    real(wp), dimension(ncol, nlay+1), intent(out) :: p_lev, t_lev
-
-    real(wp) :: z_lay(nlay), z_lev(nlay+1)
-    real(wp) :: z, q, T, p
-    real(wp) :: Tv, Tv0, p_hpa
-    integer  :: icol, ilay, i
-
-    real(wp), parameter :: z_trop = 15000._wp, z_top = 70.e3_wp
-    ! Ozone profile - maybe only a single profile? 
-    real(wp), parameter :: g1 = 3.6478_wp, g2 = 0.83209_wp, g3 = 11.3515_wp, o3_min = 1e-13_wp 
-    ! According to CvH RRTMGP in Single Precision will fail with lower ozone concentrations
-
-    real(wp), parameter :: g = 9.79764, Rd = 287.04, p0 = 101480. ! Surface pressure 
-    real(wp), parameter :: z_q1 = 4.0e3, z_q2 = 7.5e3,  q_t = 1.e-8
-    real(wp), parameter :: gamma = 6.7e-3
-    
-    real(wp), parameter :: q_0 = 0.01864 ! for 300 K SST.
-    ! -------------------
-    Tv0 = (1. + 0.608*q_0) * SST
-    !
-    ! Split resolution above and below RCE tropopause (15 km or about 125 hPa)
-    !
-    z_lev(:) = [0._wp,  2._wp*           z_trop /nlay * [(i, i=1, nlay/2)],  & 
-               z_trop + 2._wp * (z_top - z_trop)/nlay * [(i, i=1, nlay/2)]]
-    z_lay(:) = 0.5_wp * (z_lev(1:nlay)  + z_lev(2:nlay+1))
-    
-    !$acc        data copyin(z_lev, z_lay) 
-    !$omp target data map(to:z_lev, z_lay)
-
-    !
-    ! The two loops are the same, except applied to layers and levels 
-    !   but nvfortran doesn't seems to support elemental procedures in OpenACC loops
-    !
-    !$acc                         parallel loop    collapse(2) 
-    !$omp target teams distribute parallel do simd collapse(2) 
-    do ilay = 1, nlay 
-      do icol = 1, ncol 
-        z = z_lay(ilay) 
-        if (z > z_trop) then 
-          q = q_t
-          T = SST - gamma*z_trop/(1. + 0.608*q_0)
-          Tv  = (1. + 0.608*q  ) *   T
-          p = p0 * (Tv/Tv0)**(g/(Rd*gamma)) * exp( -((g*(z-z_trop))/(Rd*Tv)) )
-        else 
-          q = q_0 * exp(-z/z_q1) * exp(-(z/z_q2)**2)
-          T = SST - gamma*z / (1. + 0.608*q)    
-          Tv  = (1. + 0.608*q  ) *   T
-          p = p0 * (Tv/Tv0)**(g/(Rd*gamma))
-        end if 
-        p_lay(icol,ilay) = p 
-        t_lay(icol,ilay) = T
-        q_lay(icol,ilay) = q
-        p_hpa = p_lay(icol,ilay) / 100._wp
-        o3(icol, ilay) = max(o3_min, & 
-                             g1 * p_hpa**g2 * exp(-p_hpa/g3) * 1.e-6_wp)
-      end do
-    end do 
-
-    !$acc                         parallel loop    collapse(2) 
-    !$omp target teams distribute parallel do simd collapse(2) 
-    do ilay = 1, nlay+1
-      do icol = 1, ncol 
-        z = z_lev(ilay) 
-        if (z > z_trop) then 
-          q = q_t
-          T = SST - gamma*z_trop/(1. + 0.608*q_0)
-          Tv  = (1. + 0.608*q  ) *   T
-          p = p0 * (Tv/Tv0)**(g/(Rd*gamma)) * exp( -((g*(z-z_trop))/(Rd*Tv)) )
-        else 
-          q = q_0 * exp(-z/z_q1) * exp(-(z/z_q2)**2)
-          T = SST - gamma*z / (1. + 0.608*q)    
-          Tv  = (1. + 0.608*q  ) *   T
-          p = p0 * (Tv/Tv0)**(g/(Rd*gamma))
-        end if 
-        p_lev(icol,ilay) = p 
-        t_lev(icol,ilay) = T
-      end do 
-    end do 
-    !$acc end        data
-    !$omp end target data
-  end subroutine compute_profiles
-  ! ----------------------------------------------------------------------------------
   subroutine stop_on_err(error_msg)
     use iso_fortran_env, only : error_unit
     character(len=*), intent(in) :: error_msg
@@ -660,6 +585,30 @@ contains
   !
   subroutine compute_clouds 
     real(wp) :: rel_val, rei_val
+    ! for icon adaption
+    real(wp) :: reimin, reimax, relmin, relmax, re_cryst_scal, re_drop_scal, ziwc, zlwc, zkap, effective_radius
+    real(wp) :: mean_cdnc(60) = (/2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+                  2.00000000e+07, 2.00000000e+07, 2.00000680e+07, 2.00023200e+07,&
+                  2.00295560e+07, 2.01922880e+07, 2.07834940e+07, 2.22821960e+07,&
+                  2.51960240e+07, 2.98459080e+07, 3.62477360e+07, 4.41368320e+07,&
+                  5.30814960e+07, 6.26067720e+07, 7.22813280e+07, 8.17591280e+07,&
+                  9.07884320e+07, 9.92019200e+07, 1.04135896e+08, 1.05483576e+08,&
+                  1.06020616e+08, 1.06287360e+08, 1.06438648e+08, 1.06539488e+08,&
+                  1.06609136e+08, 1.06655440e+08, 1.06689352e+08, 1.80468740e+07/)
+      ! adapted from ICON radiation code
+      real(wp), parameter :: droplet_scale = 1.0e2
+      real(wp), parameter :: pi = acos(-1._wp)
+      real(wp), parameter :: rhoh2o = 1000._wp
+      real(wp), parameter :: ccwmin = 1.e-7_wp      ! min condensate for lw cloud opacity
+      real(wp), parameter :: zkap_cont = 1.143_wp   ! continental (Martin et al. ) breadth param
+      real(wp), parameter :: zkap_mrtm = 1.077_wp    ! maritime (Martin et al.) breadth parameter
     ! 
     ! Variable and memory allocation 
     !
@@ -691,33 +640,93 @@ contains
     !$acc enter        data create(   cloud_mask, lwp, iwp, rel, rei)
     !$omp target enter data map(alloc:cloud_mask, lwp, iwp, rel, rei)
 
-    ! Restrict clouds to troposphere (> 100 hPa = 100*100 Pa)
-    !   and not very close to the ground (< 900 hPa), and
-    !   put them in 2/3 of the columns since that's roughly the
-    !   total cloudiness of earth
-    rel_val = 0.5 * (cloud_optics%get_min_radius_liq() + cloud_optics%get_max_radius_liq())
-    rei_val = 0.5 * (cloud_optics%get_min_radius_ice() + cloud_optics%get_max_radius_ice())
-    !$acc                         parallel loop    collapse(2) copyin(t_lay) copyout( lwp, iwp, rel, rei)
-    !$omp target teams distribute parallel do simd collapse(2) map(to:t_lay) map(from:lwp, iwp, rel, rei)
+    ! ----------------------------------- default method ------------------------------------ !
+    ! ! Restrict clouds to troposphere (> 100 hPa = 100*100 Pa)
+    ! !   and not very close to the ground (< 900 hPa), and
+    ! !   put them in 2/3 of the columns since that's roughly the
+    ! !   total cloudiness of earth
+    ! rel_val = 0.5 * (cloud_optics%get_min_radius_liq() + cloud_optics%get_max_radius_liq())
+    ! rei_val = 0.5 * (cloud_optics%get_min_radius_ice() + cloud_optics%get_max_radius_ice())
+    ! !$acc                         parallel loop    collapse(2) copyin(t_lay) copyout( lwp, iwp, rel, rei)
+    ! !$omp target teams distribute parallel do simd collapse(2) map(to:t_lay) map(from:lwp, iwp, rel, rei)
+    ! do ilay=1,nlay
+    !   do icol=1,ncol
+    !     cloud_mask(icol,ilay) = p_lay(icol,ilay) > 100._wp * 100._wp .and. &
+    !                             p_lay(icol,ilay) < 900._wp * 100._wp .and. &
+    !                             mod(icol, 3) /= 0
+    !     !
+    !     ! Ice and liquid will overlap in a few layers
+    !     !
+    !     ! lwp(icol,ilay) = merge(10._wp,  0._wp, cloud_mask(icol,ilay) .and. t_lay(icol,ilay) > 263._wp)
+    !     ! iwp(icol,ilay) = merge(10._wp,  0._wp, cloud_mask(icol,ilay) .and. t_lay(icol,ilay) < 273._wp)
+
+    !     lwp(icol,ilay) = (p_lev(icol,ilay+1) - p_lev(icol,ilay)) * qc(icol,ilay) / grav * 1e3_wp
+    !     iwp(icol,ilay) = (p_lev(icol,ilay+1) - p_lev(icol,ilay)) * qi(icol,ilay) / grav * 1e3_wp
+
+    !     rel(icol,ilay) = merge(rel_val, 0._wp, lwp(icol,ilay) > 0._wp)
+    !     rei(icol,ilay) = merge(rei_val, 0._wp, iwp(icol,ilay) > 0._wp)
+
+    !   end do
+    ! end do
+    ! ----------------------------------- icon method ------------------------------------ !
+    effective_radius = &
+      1.0e6_wp * droplet_scale * (3.0e-9_wp / (4.0_wp * pi * rhoh2o))**(1.0_wp/3.0_wp) 
+
+    reimin = cloud_optics%get_min_radius_ice()
+    reimax = cloud_optics%get_max_radius_ice()
+    
+    relmin = cloud_optics%get_min_radius_liq()
+    relmax = cloud_optics%get_max_radius_liq()
+
+    IF (relmax <= relmin .OR. reimax <= reimin) THEN
+      CALL stop_on_err('compute_clouds: Droplet minimun size required is bigger than maximum')
+    END IF
+
+    !$ACC parallel loop default(none) gang vector collapse(2) async(1)
     do ilay=1,nlay
       do icol=1,ncol
-        cloud_mask(icol,ilay) = p_lay(icol,ilay) > 100._wp * 100._wp .and. &
-                                p_lay(icol,ilay) < 900._wp * 100._wp .and. &
-                                mod(icol, 3) /= 0
         !
-        ! Ice and liquid will overlap in a few layers
+        ! --- Cloud liquid and ice mass: [kg/m2 in cell] --> [g/m2 in cloud]
         !
-        ! lwp(icol,ilay) = merge(10._wp,  0._wp, cloud_mask(icol,ilay) .and. t_lay(icol,ilay) > 263._wp)
-        ! iwp(icol,ilay) = merge(10._wp,  0._wp, cloud_mask(icol,ilay) .and. t_lay(icol,ilay) < 273._wp)
+        ! cld_frc_loc = MAX(EPSILON(1.0_wp),cld_frc(icol,ilay))
+        ! ziwp(icol,ilay) = xm_ice(icol,ilay)*1000.0_wp/cld_frc_loc
+        ! zlwp(icol,ilay) = xm_liq(icol,ilay)*1000.0_wp/cld_frc_loc
+
+        ! ! Mask which tells cloud optics that this cell is clear
+        ! lcldlyr = cld_frc(icol,ilay) > cld_frc_thresh !!!
+        ! IF (.NOT. lcldlyr) THEN
+        !   ziwp(icol,ilay) = 0.0_wp
+        !   zlwp(icol,ilay) = 0.0_wp
+        ! END IF
 
         lwp(icol,ilay) = (p_lev(icol,ilay+1) - p_lev(icol,ilay)) * qc(icol,ilay) / grav * 1e3_wp
         iwp(icol,ilay) = (p_lev(icol,ilay+1) - p_lev(icol,ilay)) * qi(icol,ilay) / grav * 1e3_wp
+        !
+        ! --- cloud water and ice concentrations [g/m3]
+        !
+        ziwc = iwp(icol,ilay)/dh_lev(icol,ilay) !!!
+        zlwc = lwp(icol,ilay)/dh_lev(icol,ilay)
+        !
+        ! IF (lcldlyr .AND. (lwp(icol,ilay)+iwp(icol,ilay))>ccwmin) THEN
+        IF (lwp(icol,ilay)+iwp(icol,ilay) > ccwmin) THEN
 
-        rel(icol,ilay) = merge(rel_val, 0._wp, lwp(icol,ilay) > 0._wp)
-        rei(icol,ilay) = merge(rei_val, 0._wp, iwp(icol,ilay) > 0._wp)
+          zkap = 0.71_wp*zkap_mrtm + 0.29_wp*zkap_cont
+          ! todo: extract land mask somehow
+          ! IF ( laland(icol) .AND. .NOT.laglac(icol) ) zkap = zkap_cont
+          
+          re_cryst_scal = MAX(reimin, MIN(reimax,83.8_wp*ziwc**0.216_wp))
+          re_drop_scal  = MAX(relmin, MIN(relmax, &
+            effective_radius * zkap * (zlwc / mean_cdnc(ilay))**(1.0_wp/3.0_wp) ))
 
-      end do
-    end do
+          rei (icol,ilay) = re_cryst_scal
+          rel (icol,ilay) = re_drop_scal
+        ELSE
+          rei (icol,ilay) = reimin
+          rel (icol,ilay) = relmin
+        END IF
+      END DO
+    END DO
+
     !$acc exit data delete(cloud_mask)
     !$omp target exit data map(release:cloud_mask)
    

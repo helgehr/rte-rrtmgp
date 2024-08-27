@@ -1,16 +1,18 @@
 set -eu #x
 
-if (( $# != 2 )); then
+if (( $# != 4 )); then
 	echo "Please provide a climsim file and out_file"
 	exit 1
 fi
 
-mli_file=$1
-out_path=$2
+ncol=$1
+nlay=$2
+mli_file=$3
+out_path=$4
 py_script="${RRTMGP_ROOT}/examples/all-sky/rad_flux2tend.py"
 
-ncol="384" #"21600"#
-nlay="60"
+#ncol="384" #"21600"#
+#nlay="60"
 
 if (( $ncol != "384" )) && [[ "$mli_file" =~ "low-res" ]]; then
   echo "Infile seems to be low_res but using $ncol columns now"

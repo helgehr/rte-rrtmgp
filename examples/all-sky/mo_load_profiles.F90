@@ -116,6 +116,7 @@ contains
                            hyam,&
                            hybm,&
                            p0,&
+                           ps,&
                            p_lay,&
                            t_lay,&
                            p_lev,&
@@ -131,12 +132,12 @@ contains
     real(wp), dimension(nlay+1),       intent(in)  :: hyai, hybi
     real(wp), dimension(nlay),         intent(in)  :: hyam, hybm
     real(wp),                          intent(in)  :: p0
+    real(wp), dimension(ncol),         intent(out) :: ps
     real(wp), dimension(ncol, nlay  ), intent(out) :: p_lay, t_lay, q_lay, qc_lay, qi_lay, o3, n2o, ch4
     real(wp), dimension(ncol, nlay+1), intent(out) :: p_lev
 
     ! Local variables
     integer :: ncid, i
-    real(wp), dimension(ncol) :: ps
 
     ! real(wp), dimension(:,:), allocatable                :: q_lay
     ! -----------------
