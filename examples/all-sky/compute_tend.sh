@@ -34,13 +34,15 @@ lw_path="${tmp_dir}/my-rrtmgp-allsky-lw_noaero.nc"
 		${RRTMGP_DATA}/rrtmgp-gas-sw-g224.nc \
 		/p/scratch/icon-a-ml/heuer1/LEAP/ClimSim_low-res/ClimSim_low-res_grid-info.nc \
 		$mli_file \
-		${RRTMGP_DATA}/rrtmgp-clouds-sw.nc
+		${RRTMGP_DATA}/rrtmgp-clouds-sw.nc \
+		${RRTMGP_DATA}/rrtmgp-aerosols-merra-sw.nc
 
 ./my_rrtmgp_allsky $ncol $nlay 1 $lw_path \
 		${RRTMGP_DATA}/rrtmgp-gas-lw-g256.nc \
 		/p/scratch/icon-a-ml/heuer1/LEAP/ClimSim_low-res/ClimSim_low-res_grid-info.nc \
 		$mli_file \
-		${RRTMGP_DATA}/rrtmgp-clouds-lw.nc
+		${RRTMGP_DATA}/rrtmgp-clouds-lw.nc \
+		${RRTMGP_DATA}/rrtmgp-aerosols-merra-lw.nc
 
 # # first steps with cdo, but I have to used python anyway for the consecutive differences -> transition to one python script
 # cdo expr,'net_flux=sw_flux_up-sw_flux_dn' my-rrtmgp-allsky-sw_noaero.nc my-rrtmgp-allsky-sw_noaero_netflux.nc

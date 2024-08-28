@@ -773,6 +773,10 @@ contains
     !$acc        enter data create(   aero_type, aero_size, aero_mass, relhum)
     !$omp target enter data map(alloc:aero_type, aero_size, aero_mass, relhum)
     call get_relhum(ncol, nlay, p_lay, t_lay, vmr_h2o, relhum)
+    if (do_aerosols) then
+      print *, "Clipping relhum to 0, 1 for aerosol computations"
+      relhum = min(max(relhum, 0._wp), 1._wp)
+    end if
     !$acc end data
     !$omp end target data
 
