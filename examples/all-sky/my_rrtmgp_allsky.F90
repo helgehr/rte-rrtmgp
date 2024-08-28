@@ -587,21 +587,31 @@ contains
     real(wp) :: rel_val, rei_val
     ! for icon adaption
     real(wp) :: reimin, reimax, relmin, relmax, re_cryst_scal, re_drop_scal, ziwc, zlwc, zkap, effective_radius
-    real(wp) :: mean_cdnc(60) = (/2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
-                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
-                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
-                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
-                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
-                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
-                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
-                  2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
-                  2.00000000e+07, 2.00000000e+07, 2.00000680e+07, 2.00023200e+07,&
-                  2.00295560e+07, 2.01922880e+07, 2.07834940e+07, 2.22821960e+07,&
-                  2.51960240e+07, 2.98459080e+07, 3.62477360e+07, 4.41368320e+07,&
-                  5.30814960e+07, 6.26067720e+07, 7.22813280e+07, 8.17591280e+07,&
-                  9.07884320e+07, 9.92019200e+07, 1.04135896e+08, 1.05483576e+08,&
-                  1.06020616e+08, 1.06287360e+08, 1.06438648e+08, 1.06539488e+08,&
-                  1.06609136e+08, 1.06655440e+08, 1.06689352e+08, 1.80468740e+07/)
+    real(wp) :: zprat, zn1, zn2
+    ! declare zcdnc as array for debugging, computation of zcdnc has to be shifted before if condition later
+    ! real(wp), dimension(ncol,nlay) :: zcdnc
+    real(wp) :: zcdnc
+
+    real(wp), parameter :: cn1lnd = 20._wp
+    real(wp), parameter :: cn2lnd = 180._wp
+    real(wp), parameter :: cn1sea = 20._wp
+    real(wp), parameter :: cn2sea = 80._wp
+    ! mean cdnc profile analyzed from simulation data (changed to computation as in icon)
+    ! real(wp) :: mean_cdnc(60) = (/2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+    !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+    !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+    !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+    !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+    !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+    !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+    !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+    !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000680e+07,&
+    !                               2.00023200e+07, 2.00295560e+07, 2.01922880e+07, 2.07834940e+07,&
+    !                               2.22821960e+07, 2.51960240e+07, 2.98459080e+07, 3.62477360e+07,&
+    !                               4.41368320e+07, 5.30814960e+07, 6.26067720e+07, 7.22813280e+07,&
+    !                               8.17591280e+07, 9.07884320e+07, 9.92019200e+07, 1.04135896e+08,&
+    !                               1.05483576e+08, 1.06020616e+08, 1.06287360e+08, 1.06438648e+08,&
+    !                               1.06539488e+08, 1.06609136e+08, 1.06655440e+08, 1.06689352e+08/)
       ! adapted from ICON radiation code
       real(wp), parameter :: droplet_scale = 1.0e2
       real(wp), parameter :: pi = acos(-1._wp)
@@ -708,7 +718,19 @@ contains
         zlwc = lwp(icol,ilay)/dh_lev(icol,ilay)
         !
         ! IF (lcldlyr .AND. (lwp(icol,ilay)+iwp(icol,ilay))>ccwmin) THEN
+
         IF (lwp(icol,ilay)+iwp(icol,ilay) > ccwmin) THEN
+
+          ! cdnc calculation from icon:
+          zprat=(MIN(8._wp,80000._wp/p_lay(icol,ilay)))**2
+          zn1 = 0.71_wp*cn1sea + 0.29_wp*cn1lnd
+          zn2 = 0.71_wp*cn2sea + 0.29_wp*cn2lnd
+          IF (p_lay(icol,ilay).LT.80000._wp) THEN
+            zcdnc = 1.e6_wp*(zn1+(zn2-zn1)*(EXP(1._wp-zprat)))
+          ELSE
+            zcdnc = zn2*1.e6_wp
+          END IF
+          ! end cdnc calculation from icon:
 
           zkap = 0.71_wp*zkap_mrtm + 0.29_wp*zkap_cont
           ! todo: extract land mask somehow
@@ -716,7 +738,7 @@ contains
           
           re_cryst_scal = MAX(reimin, MIN(reimax,83.8_wp*ziwc**0.216_wp))
           re_drop_scal  = MAX(relmin, MIN(relmax, &
-            effective_radius * zkap * (zlwc / mean_cdnc(ilay))**(1.0_wp/3.0_wp) ))
+            effective_radius * zkap * (zlwc / zcdnc)**(1.0_wp/3.0_wp) ))
 
           rei (icol,ilay) = re_cryst_scal
           rel (icol,ilay) = re_drop_scal
@@ -726,6 +748,7 @@ contains
         END IF
       END DO
     END DO
+    ! print *, sum(zcdnc,1)/size(zcdnc,1)
 
     !$acc exit data delete(cloud_mask)
     !$omp target exit data map(release:cloud_mask)

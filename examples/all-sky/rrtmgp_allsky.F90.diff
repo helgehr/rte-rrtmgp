@@ -305,24 +305,34 @@
 <     !$omp end target data
 <   end subroutine compute_profiles
 <   ! ----------------------------------------------------------------------------------
-553a588,611
+553a588,621
 >     ! for icon adaption
 >     real(wp) :: reimin, reimax, relmin, relmax, re_cryst_scal, re_drop_scal, ziwc, zlwc, zkap, effective_radius
->     real(wp) :: mean_cdnc(60) = (/2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
->                   2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
->                   2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
->                   2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
->                   2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
->                   2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
->                   2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
->                   2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
->                   2.00000000e+07, 2.00000000e+07, 2.00000680e+07, 2.00023200e+07,&
->                   2.00295560e+07, 2.01922880e+07, 2.07834940e+07, 2.22821960e+07,&
->                   2.51960240e+07, 2.98459080e+07, 3.62477360e+07, 4.41368320e+07,&
->                   5.30814960e+07, 6.26067720e+07, 7.22813280e+07, 8.17591280e+07,&
->                   9.07884320e+07, 9.92019200e+07, 1.04135896e+08, 1.05483576e+08,&
->                   1.06020616e+08, 1.06287360e+08, 1.06438648e+08, 1.06539488e+08,&
->                   1.06609136e+08, 1.06655440e+08, 1.06689352e+08, 1.80468740e+07/)
+>     real(wp) :: zprat, zn1, zn2
+>     ! declare zcdnc as array for debugging, computation of zcdnc has to be shifted before if condition later
+>     ! real(wp), dimension(ncol,nlay) :: zcdnc
+>     real(wp) :: zcdnc
+> 
+>     real(wp), parameter :: cn1lnd = 20._wp
+>     real(wp), parameter :: cn2lnd = 180._wp
+>     real(wp), parameter :: cn1sea = 20._wp
+>     real(wp), parameter :: cn2sea = 80._wp
+>     ! mean cdnc profile analyzed from simulation data (changed to computation as in icon)
+>     ! real(wp) :: mean_cdnc(60) = (/2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+>     !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+>     !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+>     !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+>     !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+>     !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+>     !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+>     !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000000e+07,&
+>     !                               2.00000000e+07, 2.00000000e+07, 2.00000000e+07, 2.00000680e+07,&
+>     !                               2.00023200e+07, 2.00295560e+07, 2.01922880e+07, 2.07834940e+07,&
+>     !                               2.22821960e+07, 2.51960240e+07, 2.98459080e+07, 3.62477360e+07,&
+>     !                               4.41368320e+07, 5.30814960e+07, 6.26067720e+07, 7.22813280e+07,&
+>     !                               8.17591280e+07, 9.07884320e+07, 9.92019200e+07, 1.04135896e+08,&
+>     !                               1.05483576e+08, 1.06020616e+08, 1.06287360e+08, 1.06438648e+08,&
+>     !                               1.06539488e+08, 1.06609136e+08, 1.06655440e+08, 1.06689352e+08/)
 >       ! adapted from ICON radiation code
 >       real(wp), parameter :: droplet_scale = 1.0e2
 >       real(wp), parameter :: pi = acos(-1._wp)
@@ -330,11 +340,11 @@
 >       real(wp), parameter :: ccwmin = 1.e-7_wp      ! min condensate for lw cloud opacity
 >       real(wp), parameter :: zkap_cont = 1.143_wp   ! continental (Martin et al. ) breadth param
 >       real(wp), parameter :: zkap_mrtm = 1.077_wp    ! maritime (Martin et al.) breadth parameter
-575c633
+575c643
 <         call stop_on_err("rte_rrtmgp_allsky: Don't recognize the kind of optical properties ")
 ---
 >         call stop_on_err("my_rte_rrtmgp_allsky: Don't recognize the kind of optical properties ")
-585,592c643,685
+585,592c653,695
 <     ! Restrict clouds to troposphere (> 100 hPa = 100*100 Pa)
 <     !   and not very close to the ground (< 900 hPa), and
 <     !   put them in 2/3 of the columns since that's roughly the
@@ -387,15 +397,15 @@
 >     END IF
 > 
 >     !$ACC parallel loop default(none) gang vector collapse(2) async(1)
-595,597d687
+595,597d697
 <         cloud_mask(icol,ilay) = p_lay(icol,ilay) > 100._wp * 100._wp .and. &
 <                                 p_lay(icol,ilay) < 900._wp * 100._wp .and. &
 <                                 mod(icol, 3) /= 0
-599c689
+599c699
 <         ! Ice and liquid will overlap in a few layers
 ---
 >         ! --- Cloud liquid and ice mass: [kg/m2 in cell] --> [g/m2 in cloud]
-601,606c691,729
+601,606c701,752
 <         lwp(icol,ilay) = merge(10._wp,  0._wp, cloud_mask(icol,ilay) .and. t_lay(icol,ilay) > 263._wp)
 <         iwp(icol,ilay) = merge(10._wp,  0._wp, cloud_mask(icol,ilay) .and. t_lay(icol,ilay) < 273._wp)
 <         rel(icol,ilay) = merge(rel_val, 0._wp, lwp(icol,ilay) > 0._wp)
@@ -423,7 +433,19 @@
 >         zlwc = lwp(icol,ilay)/dh_lev(icol,ilay)
 >         !
 >         ! IF (lcldlyr .AND. (lwp(icol,ilay)+iwp(icol,ilay))>ccwmin) THEN
+> 
 >         IF (lwp(icol,ilay)+iwp(icol,ilay) > ccwmin) THEN
+> 
+>           ! cdnc calculation from icon:
+>           zprat=(MIN(8._wp,80000._wp/p_lay(icol,ilay)))**2
+>           zn1 = 0.71_wp*cn1sea + 0.29_wp*cn1lnd
+>           zn2 = 0.71_wp*cn2sea + 0.29_wp*cn2lnd
+>           IF (p_lay(icol,ilay).LT.80000._wp) THEN
+>             zcdnc = 1.e6_wp*(zn1+(zn2-zn1)*(EXP(1._wp-zprat)))
+>           ELSE
+>             zcdnc = zn2*1.e6_wp
+>           END IF
+>           ! end cdnc calculation from icon:
 > 
 >           zkap = 0.71_wp*zkap_mrtm + 0.29_wp*zkap_cont
 >           ! todo: extract land mask somehow
@@ -431,7 +453,7 @@
 >           
 >           re_cryst_scal = MAX(reimin, MIN(reimax,83.8_wp*ziwc**0.216_wp))
 >           re_drop_scal  = MAX(relmin, MIN(relmax, &
->             effective_radius * zkap * (zlwc / mean_cdnc(ilay))**(1.0_wp/3.0_wp) ))
+>             effective_radius * zkap * (zlwc / zcdnc)**(1.0_wp/3.0_wp) ))
 > 
 >           rei (icol,ilay) = re_cryst_scal
 >           rel (icol,ilay) = re_drop_scal
@@ -441,17 +463,18 @@
 >         END IF
 >       END DO
 >     END DO
+>     ! print *, sum(zcdnc,1)/size(zcdnc,1)
 > 
-636c759
+636c782
 <         call stop_on_err("rte_rrtmgp_allsky: Don't recognize the kind of optical properties ")
 ---
 >         call stop_on_err("my_rte_rrtmgp_allsky: Don't recognize the kind of optical properties ")
-652a776,779
+652a799,802
 >     if (do_aerosols) then
 >       print *, "Clipping relhum to 0, 1 for aerosol computations"
 >       relhum = min(max(relhum, 0._wp), 1._wp)
 >     end if
-789,791c916,919
+789,791c939,942
 <       if(nf90_def_dim(ncid, "gpt", ngpt, ngpt_dim) /= NF90_NOERR) &
 <         call stop_on_err("rrtmgp_allsky: can't define ngpt dimension")
 <       call create_var("toa_flux",    ncid, [col_dim, ngpt_dim])
@@ -460,7 +483,7 @@
 >       ! if(nf90_def_dim(ncid, "gpt", ngpt, ngpt_dim) /= NF90_NOERR) &
 >       !   call stop_on_err("rrtmgp_allsky: can't define ngpt dimension")
 >       ! call create_var("toa_flux",    ncid, [col_dim, ngpt_dim])
-833,835c961,963
+833,835c984,986
 <     if(is_sw) then
 <       call stop_on_err(write_field(ncid, "toa_flux",  toa_flux))
 <     end if
@@ -468,7 +491,7 @@
 >     ! if(is_sw) then
 >     !   call stop_on_err(write_field(ncid, "toa_flux",  toa_flux))
 >     ! end if
-863c991,1070
+863c1014,1093
 < end program rte_rrtmgp_allsky
 ---
 >   subroutine get_gas_vmr(ncol, nlay, mmr, gas_name, vmr)
