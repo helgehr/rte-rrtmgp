@@ -1,14 +1,15 @@
 set -eu #x
 
-if (( $# != 4 )); then
+if (( $# != 5 )); then
 	echo "Please provide a climsim file and out_file"
 	exit 1
 fi
 
 ncol=$1
 nlay=$2
-mli_file=$3
-out_path=$4
+grid_info_file=$3
+mli_file=$4
+out_path=$5
 py_script="${RRTMGP_ROOT}/examples/all-sky/rad_flux2tend.py"
 
 #ncol="384" #"21600"#
@@ -32,14 +33,14 @@ lw_path="${tmp_dir}/my-rrtmgp-allsky-lw_noaero.nc"
 
 ./my_rrtmgp_allsky $ncol $nlay 1 $sw_path \
 		${RRTMGP_DATA}/rrtmgp-gas-sw-g224.nc \
-		/p/scratch/icon-a-ml/heuer1/LEAP/ClimSim_low-res/ClimSim_low-res_grid-info.nc \
+		$grid_info_file \
 		$mli_file \
 		${RRTMGP_DATA}/rrtmgp-clouds-sw.nc \
 		${RRTMGP_DATA}/rrtmgp-aerosols-merra-sw.nc
 
 ./my_rrtmgp_allsky $ncol $nlay 1 $lw_path \
 		${RRTMGP_DATA}/rrtmgp-gas-lw-g256.nc \
-		/p/scratch/icon-a-ml/heuer1/LEAP/ClimSim_low-res/ClimSim_low-res_grid-info.nc \
+		$grid_info_file \
 		$mli_file \
 		${RRTMGP_DATA}/rrtmgp-clouds-lw.nc \
 		${RRTMGP_DATA}/rrtmgp-aerosols-merra-lw.nc
