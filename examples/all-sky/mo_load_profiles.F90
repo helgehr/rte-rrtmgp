@@ -117,6 +117,9 @@ contains
                            hybm,&
                            p0,&
                            ps,&
+                           landfrac,&
+                           ocnfrac,&
+                           icefrac,&
                            p_lay,&
                            t_lay,&
                            p_lev,&
@@ -132,7 +135,7 @@ contains
     real(wp), dimension(nlay+1),       intent(in)  :: hyai, hybi
     real(wp), dimension(nlay),         intent(in)  :: hyam, hybm
     real(wp),                          intent(in)  :: p0
-    real(wp), dimension(ncol),         intent(out) :: ps
+    real(wp), dimension(ncol),         intent(out) :: ps, landfrac, ocnfrac, icefrac
     real(wp), dimension(ncol, nlay  ), intent(out) :: p_lay, t_lay, q_lay, qc_lay, qi_lay, o3, n2o, ch4
     real(wp), dimension(ncol, nlay+1), intent(out) :: p_lev
 
@@ -148,6 +151,9 @@ contains
     !    call stop_on_err("load_cld_lutcoeff(): can't open file " // trim(cld_coeff_file))
 
     ps = read_field(ncid, 'state_ps', ncol)
+    landfrac = read_field(ncid, 'cam_in_LANDFRAC', ncol)
+    ocnfrac = read_field(ncid, 'cam_in_OCNFRAC', ncol)
+    icefrac = read_field(ncid, 'cam_in_ICEFRAC', ncol)
     ! p_lay = hyam * p0 + hybm * ps
     ! p_lev = hyai * p0 + hybi * ps
     call compute_outer_product(ps, hybm, ncol, nlay, p_lay)

@@ -28,8 +28,8 @@ fi
 tmp_dir=$(mktemp -d)
 #tmp_dir="./testout/"
 #echo $tmp_dir
-sw_path="${tmp_dir}/my-rrtmgp-allsky-sw_noaero.nc"
-lw_path="${tmp_dir}/my-rrtmgp-allsky-lw_noaero.nc"
+sw_path="${tmp_dir}/my-rrtmgp-allsky-sw.nc"
+lw_path="${tmp_dir}/my-rrtmgp-allsky-lw.nc"
 
 ./my_rrtmgp_allsky $ncol $nlay 1 $sw_path \
 		${RRTMGP_DATA}/rrtmgp-gas-sw-g224.nc \

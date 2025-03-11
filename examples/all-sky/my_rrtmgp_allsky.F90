@@ -114,7 +114,7 @@ program my_rte_rrtmgp_allsky
   integer(kind=i8), allocatable :: elapsed(:)
   ! my vars
   character(len=256) :: cs_mli_file, cs_grid_info_file
-  real(wp), dimension(:),   allocatable :: hyai, hybi, hyam, hybm, lwup, ps
+  real(wp), dimension(:),   allocatable :: hyai, hybi, hyam, hybm, lwup, ps, landfrac, ocnfrac, icefrac
   real(wp), allocatable :: p0
   real(wp), parameter :: sigma = 5.670374419e-8_wp ! Stefan-Boltzmann constant 
   !----------
@@ -159,7 +159,7 @@ program my_rte_rrtmgp_allsky
   if (nUserArgs >  9) print *, "Ignoring command line arguments beyond the first seven..."
   ! -----------------------------------------------------------------------------------
   allocate(p_lay(ncol, nlay), t_lay(ncol, nlay), p_lev(ncol, nlay+1), t_lev(ncol, nlay+1), h_lev(ncol, nlay+1), dh_lev(ncol, nlay))
-  allocate(q    (ncol, nlay),    o3(ncol, nlay), qc   (ncol, nlay),   qi   (ncol, nlay), n2o(ncol, nlay), ch4(ncol, nlay), ps(ncol))
+  allocate(q    (ncol, nlay),    o3(ncol, nlay), qc   (ncol, nlay),   qi   (ncol, nlay), n2o(ncol, nlay), ch4(ncol, nlay), ps(ncol), landfrac(ncol), ocnfrac(ncol), icefrac(ncol))
   allocate(q_mmr(ncol, nlay),o3_mmr(ncol, nlay), qc_mmr(ncol, nlay), qi_mmr(ncol, nlay), n2o_mmr(ncol, nlay), ch4_mmr(ncol, nlay))
   !$acc        data create(   p_lay, t_lay, p_lev, t_lev, q, o3)
   !$omp target data map(alloc:p_lay, t_lay, p_lev, t_lev, q, o3)
@@ -186,6 +186,9 @@ program my_rte_rrtmgp_allsky
                      hybm,&
                      p0,&
                      ps,&
+                     landfrac,&
+                     ocnfrac,&
+                     icefrac,&
                      p_lay,&
                      t_lay,&
                      p_lev,&
@@ -619,6 +622,10 @@ contains
       real(wp), parameter :: ccwmin = 1.e-7_wp      ! min condensate for lw cloud opacity
       real(wp), parameter :: zkap_cont = 1.143_wp   ! continental (Martin et al. ) breadth param
       real(wp), parameter :: zkap_mrtm = 1.077_wp    ! maritime (Martin et al.) breadth parameter
+      
+      LOGICAL :: laland(ncol)
+      LOGICAL :: laocn(ncol)
+      LOGICAL :: laice(ncol)
     ! 
     ! Variable and memory allocation 
     !
@@ -693,6 +700,20 @@ contains
     END IF
 
     !$ACC parallel loop default(none) gang vector collapse(2) async(1)
+    laland = landfrac > 0.5_wp
+    ! laocn = ocnfrac > 0.0_wp
+    ! laice = icefrac > 0._wp
+    print *, "----------- changed version to use LANDFRAC for cdnc computation -----------"
+    print *, sum(merge(1._wp, 0._wp, laland))/size(laland)
+    ! print *, sum(landfrac)/size(landfrac)
+    ! print *, sum(merge(1._wp, 0._wp, laocn))/size(laocn)
+    ! print *, sum(ocnfrac)/size(ocnfrac)
+    ! print *, sum(merge(1._wp, 0._wp, laice))/size(laice)
+    ! print *, sum(icefrac)/size(icefrac)
+    ! print *, sum(merge(1._wp, 0._wp, laland.and..not.laice))/size(laland)
+    ! print *, laland
+    ! print *, "-------------------------------"
+    ! print *, laice
     do ilay=1,nlay
       do icol=1,ncol
         !
@@ -732,9 +753,11 @@ contains
           END IF
           ! end cdnc calculation from icon:
 
-          zkap = 0.71_wp*zkap_mrtm + 0.29_wp*zkap_cont
+          ! zkap = 0.71_wp*zkap_mrtm + 0.29_wp*zkap_cont
           ! todo: extract land mask somehow
-          ! IF ( laland(icol) .AND. .NOT.laglac(icol) ) zkap = zkap_cont
+          zkap = zkap_mrtm
+          IF ( laland(icol) ) zkap = zkap_cont
+          ! IF ( laland(icol) .AND. .NOT.laice(icol) ) zkap = zkap_cont
           
           re_cryst_scal = MAX(reimin, MIN(reimax,83.8_wp*ziwc**0.216_wp))
           re_drop_scal  = MAX(relmin, MIN(relmax, &
