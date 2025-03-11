@@ -28,7 +28,7 @@ program my_rte_rrtmgp_allsky
   ! Arrays: dimensions (col, lay)
   real(wp), dimension(:,:),   allocatable :: p_lay, t_lay, p_lev, t_lev, h_lev, dh_lev ! t_lev is only needed for LW
   real(wp), dimension(:,:),   allocatable :: q, o3, col_dry, qc, qi, n2o, ch4
-  real(wp), dimension(:,:),   allocatable :: q_mmr, o3_mmr, qc_mmr, qi_mmr, n2o_mmr, ch4_mmr
+  real(wp), dimension(:,:),   allocatable :: q_mmr, qc_mmr, qi_mmr!, o3_mmr, n2o_mmr, ch4_mmr
   real(wp), dimension(:,:),   allocatable :: temp_array
 
   !
@@ -160,7 +160,7 @@ program my_rte_rrtmgp_allsky
   ! -----------------------------------------------------------------------------------
   allocate(p_lay(ncol, nlay), t_lay(ncol, nlay), p_lev(ncol, nlay+1), t_lev(ncol, nlay+1), h_lev(ncol, nlay+1), dh_lev(ncol, nlay))
   allocate(q    (ncol, nlay),    o3(ncol, nlay), qc   (ncol, nlay),   qi   (ncol, nlay), n2o(ncol, nlay), ch4(ncol, nlay), ps(ncol), landfrac(ncol), ocnfrac(ncol), icefrac(ncol))
-  allocate(q_mmr(ncol, nlay),o3_mmr(ncol, nlay), qc_mmr(ncol, nlay), qi_mmr(ncol, nlay), n2o_mmr(ncol, nlay), ch4_mmr(ncol, nlay))
+  allocate(q_mmr(ncol, nlay), qc_mmr(ncol, nlay), qi_mmr(ncol, nlay))!, o3_mmr(ncol, nlay), n2o_mmr(ncol, nlay), ch4_mmr(ncol, nlay))
   !$acc        data create(   p_lay, t_lay, p_lev, t_lev, q, o3)
   !$omp target data map(alloc:p_lay, t_lay, p_lev, t_lev, q, o3)
   ! ------------------- my stuff ------------------
@@ -195,9 +195,9 @@ program my_rte_rrtmgp_allsky
                      q_mmr,&
                      qc_mmr,&
                      qi_mmr,&
-                     o3_mmr,&
-                     n2o_mmr,&
-                     ch4_mmr) 
+                     o3,&
+                     n2o,&
+                     ch4) 
         
   ! from https://www.weather.gov/media/epz/wxcalc/pressureAltitude.pdf
   do ilay=1,nlay+1
@@ -225,9 +225,9 @@ program my_rte_rrtmgp_allsky
   call get_gas_vmr(ncol, nlay, q_mmr, 'H2O', q)
   call get_gas_vmr(ncol, nlay, qc_mmr, 'H2O', qc)
   call get_gas_vmr(ncol, nlay, qi_mmr, 'H2O', qi)
-  call get_gas_vmr(ncol, nlay, o3_mmr, 'O3', o3)
-  call get_gas_vmr(ncol, nlay, n2o_mmr, 'N2O', n2o)
-  call get_gas_vmr(ncol, nlay, ch4_mmr, 'CH4', ch4)
+  ! call get_gas_vmr(ncol, nlay, o3_mmr, 'O3', o3)
+  ! call get_gas_vmr(ncol, nlay, n2o_mmr, 'N2O', n2o)
+  ! call get_gas_vmr(ncol, nlay, ch4_mmr, 'CH4', ch4)
   ! ------------------- my stuff ------------------
   ! call compute_profiles(300._wp, ncol, nlay, p_lay, t_lay, p_lev, t_lev, q, o3)
   ! print *, p_lev(1,:)
