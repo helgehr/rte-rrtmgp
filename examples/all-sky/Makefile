@@ -6,7 +6,7 @@ RRTMGP_BUILD = $(RRTMGP_ROOT)/build
 #
 # RRTMGP library, module files
 #
-LDFLAGS   += -L$(RRTMGP_BUILD)
+LDFLAGS   += -L$(RRTMGP_BUILD) -L/p/project/icon-a-ml/mambaforge/envs/heuer1_rte_rrtmgp_dev/lib
 LIBS      += -lrrtmgp -lrte
 FCINCLUDE += -I$(RRTMGP_BUILD)
 
@@ -15,7 +15,7 @@ FCINCLUDE += -I$(RRTMGP_BUILD)
 
 # netcdf C and Fortran libraries have to be in the search path or added via environment variable LDFLAGS e.g. 
 #LDFLAGS   += -L$(NFHOME)/lib -L$(NCHOME)/lib
-LIBS      += -lnetcdff -lnetcdf -lstdc++
+LIBS      += -lnetcdff -lnetcdf -lstdc++# -lssl -lcrypto -lpthread
 
 VPATH = ../:$(RRTMGP_ROOT)/rrtmgp-frontend # Needed for cloud_optics and aerosol_optics
 

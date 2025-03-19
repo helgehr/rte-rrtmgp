@@ -14,10 +14,10 @@
 #fi
 
 echo "Date: $(date)"
-echo "Starting py script"
+echo "Starting script"
 
 #cat ./commands.txt | head -n40 | xargs -I CMD --max-procs=32 bash -c CMD
-cat ./commands_03.txt | xargs -I CMD --max-procs=32 bash -c CMD
+cat ./commands_05.txt | xargs -I CMD --max-procs=32 bash -c CMD
 
 echo "Exit code of python script $?"
 echo "Date: $(date)"
