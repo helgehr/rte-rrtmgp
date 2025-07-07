@@ -297,6 +297,9 @@ contains
         error_msg = "gas_optics(): array tsfc has values outside range"
       if(present(tlev)) then
         if(any_vals_outside(tlev, this%temp_ref_min, this%temp_ref_max)) &
+            ! print *, tlev
+            ! print *, this%temp_ref_min
+            ! print *, this%temp_ref_max
             error_msg = "gas_optics(): array tlev has values outside range"
       end if
     end if
