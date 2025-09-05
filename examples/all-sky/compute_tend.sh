@@ -1,7 +1,7 @@
 set -eu #x
 
 if (( $# != 5 )); then
-	echo "Please provide a climsim file and out_file"
+	echo "Please provide <ncol> <nlay> <grid_file> <in_path> <out_path>"
 	exit 1
 fi
 
